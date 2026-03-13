@@ -7,4 +7,16 @@ pubspec.lock
 .DS_Store
 *.swp
 .claude/
+*.log
+
+# Android native build cache
+android/.cxx/
+
+# Example app generated files
 example/.flutter-plugins-dependencies
+example/.metadata
+example/.dart_tool/
+example/build/
+example/android/.gradle/
+example/android/.cxx/
+example/android/local.properties

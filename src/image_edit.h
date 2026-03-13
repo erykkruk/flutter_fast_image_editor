@@ -26,11 +26,19 @@ extern "C" {
 #define EDIT_ERROR_INVALID_PARAM -6
 
 // ============================================================================
-// Filter functions
+// Region parameters (shared by all filters)
+//
+// Rect region: top/bottom/left/right (0.0-1.0 percentages from edges)
+//   All 0.0 = full image
+//
+// Radial region: center_x/center_y use Alignment convention:
+//   center_x: -1.0 = left edge, 0.0 = center, 1.0 = right edge
+//   center_y: -1.0 = top edge, 0.0 = center, 1.0 = bottom edge
+//   radial_radius: 0.0-1.0 as fraction of image min(width, height)
+//   When radial_radius > 0, rect region params are ignored.
 // ============================================================================
 
 // Apply blur effect (box blur, 3 passes for Gaussian approximation)
-// region params: 0.0-1.0 percentages. All 0.0 = full image.
 FFI_EXPORT int image_edit_blur(
     const uint8_t* input_data,
     int input_size,
@@ -39,6 +47,9 @@ FFI_EXPORT int image_edit_blur(
     float region_bottom,
     float region_left,
     float region_right,
+    float radial_cx,
+    float radial_cy,
+    float radial_radius,
     uint8_t** output_data,
     int* output_size,
     int quality
@@ -54,6 +65,9 @@ FFI_EXPORT int image_edit_sepia(
     float region_bottom,
     float region_left,
     float region_right,
+    float radial_cx,
+    float radial_cy,
+    float radial_radius,
     uint8_t** output_data,
     int* output_size,
     int quality
@@ -69,6 +83,9 @@ FFI_EXPORT int image_edit_saturation(
     float region_bottom,
     float region_left,
     float region_right,
+    float radial_cx,
+    float radial_cy,
+    float radial_radius,
     uint8_t** output_data,
     int* output_size,
     int quality
@@ -84,6 +101,9 @@ FFI_EXPORT int image_edit_brightness(
     float region_bottom,
     float region_left,
     float region_right,
+    float radial_cx,
+    float radial_cy,
+    float radial_radius,
     uint8_t** output_data,
     int* output_size,
     int quality
@@ -99,6 +119,9 @@ FFI_EXPORT int image_edit_contrast(
     float region_bottom,
     float region_left,
     float region_right,
+    float radial_cx,
+    float radial_cy,
+    float radial_radius,
     uint8_t** output_data,
     int* output_size,
     int quality
@@ -115,6 +138,9 @@ FFI_EXPORT int image_edit_sharpen(
     float region_bottom,
     float region_left,
     float region_right,
+    float radial_cx,
+    float radial_cy,
+    float radial_radius,
     uint8_t** output_data,
     int* output_size,
     int quality
@@ -128,6 +154,9 @@ FFI_EXPORT int image_edit_grayscale(
     float region_bottom,
     float region_left,
     float region_right,
+    float radial_cx,
+    float radial_cy,
+    float radial_radius,
     uint8_t** output_data,
     int* output_size,
     int quality

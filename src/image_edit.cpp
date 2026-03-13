@@ -58,8 +58,24 @@ static inline float clampf(float v, float lo, float hi) {
 
 static inline int in_region(int x, int y, int w, int h,
                             float region_top, float region_bottom,
-                            float region_left, float region_right) {
-    // All zeros = full image
+                            float region_left, float region_right,
+                            float radial_cx, float radial_cy,
+                            float radial_radius) {
+    // Radial mode: check if pixel is within circle
+    if (radial_radius > 0.0f) {
+        float min_dim = (float)(w < h ? w : h);
+        float r_px = radial_radius * min_dim;
+
+        // Convert Alignment coords (-1..1) to pixel coords
+        float cx_px = (radial_cx + 1.0f) * 0.5f * (float)w;
+        float cy_px = (radial_cy + 1.0f) * 0.5f * (float)h;
+
+        float dx = (float)x - cx_px;
+        float dy = (float)y - cy_px;
+        return (dx * dx + dy * dy) <= (r_px * r_px);
+    }
+
+    // Rect mode: all zeros = full image
     if (region_top == 0.0f && region_bottom == 0.0f &&
         region_left == 0.0f && region_right == 0.0f) {
         return 1;
@@ -76,6 +92,154 @@ static inline int in_region(int x, int y, int w, int h,
     int in_right = (region_right > 0.0f && x >= right_start);
 
     return in_top || in_bottom || in_left || in_right;
+}
+
+// ============================================================================
+// EXIF Orientation parsing (JPEG only)
+// ============================================================================
+
+static int is_jpeg(const uint8_t* data, int size) {
+    if (size < 3) return 0;
+    return (data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF);
+}
+
+static int parse_exif_orientation(const uint8_t* data, int size) {
+    if (size < 12) return 1;
+    if (data[0] != 0xFF || data[1] != 0xD8) return 1;
+
+    int offset = 2;
+    while (offset + 4 < size) {
+        if (data[offset] != 0xFF) return 1;
+        uint8_t marker = data[offset + 1];
+        if (marker == 0xFF) { offset++; continue; }
+
+        if (marker == 0xE1) {
+            int segment_length = (data[offset + 2] << 8) | data[offset + 3];
+            int segment_start = offset + 4;
+            if (segment_start + 6 > size) return 1;
+            if (data[segment_start] != 'E' || data[segment_start + 1] != 'x' ||
+                data[segment_start + 2] != 'i' || data[segment_start + 3] != 'f' ||
+                data[segment_start + 4] != 0 || data[segment_start + 5] != 0)
+                return 1;
+
+            int tiff_start = segment_start + 6;
+            if (tiff_start + 8 > size) return 1;
+            int little_endian = (data[tiff_start] == 'I' && data[tiff_start + 1] == 'I');
+            int big_endian = (data[tiff_start] == 'M' && data[tiff_start + 1] == 'M');
+            if (!little_endian && !big_endian) return 1;
+
+            uint32_t ifd_offset;
+            if (little_endian) {
+                ifd_offset = data[tiff_start + 4] | (data[tiff_start + 5] << 8) |
+                            (data[tiff_start + 6] << 16) | (data[tiff_start + 7] << 24);
+            } else {
+                ifd_offset = (data[tiff_start + 4] << 24) | (data[tiff_start + 5] << 16) |
+                            (data[tiff_start + 6] << 8) | data[tiff_start + 7];
+            }
+
+            int ifd_start = tiff_start + ifd_offset;
+            if (ifd_start + 2 > size) return 1;
+            uint16_t num_entries;
+            if (little_endian) {
+                num_entries = data[ifd_start] | (data[ifd_start + 1] << 8);
+            } else {
+                num_entries = (data[ifd_start] << 8) | data[ifd_start + 1];
+            }
+
+            int entry_start = ifd_start + 2;
+            for (int i = 0; i < num_entries; i++) {
+                int entry_offset = entry_start + i * 12;
+                if (entry_offset + 12 > size) return 1;
+                uint16_t tag;
+                if (little_endian) {
+                    tag = data[entry_offset] | (data[entry_offset + 1] << 8);
+                } else {
+                    tag = (data[entry_offset] << 8) | data[entry_offset + 1];
+                }
+                if (tag == 0x0112) {
+                    uint16_t orientation;
+                    if (little_endian) {
+                        orientation = data[entry_offset + 8] | (data[entry_offset + 9] << 8);
+                    } else {
+                        orientation = (data[entry_offset + 8] << 8) | data[entry_offset + 9];
+                    }
+                    return (orientation >= 1 && orientation <= 8) ? orientation : 1;
+                }
+            }
+            return 1;
+        }
+        if (marker == 0xDA) return 1;
+        int segment_length = (data[offset + 2] << 8) | data[offset + 3];
+        offset += 2 + segment_length;
+    }
+    return 1;
+}
+
+static uint8_t* apply_orientation(uint8_t* pixels, int* width, int* height,
+                                   int channels, int orientation) {
+    if (orientation == 1) return pixels;
+    int w = *width, h = *height;
+    int new_w = w, new_h = h;
+    if (orientation >= 5) { new_w = h; new_h = w; }
+
+    uint8_t* result = (uint8_t*)malloc(new_w * new_h * channels);
+    if (!result) return pixels;
+
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            int src_idx = (y * w + x) * channels;
+            int dst_x, dst_y;
+            switch (orientation) {
+                case 2: dst_x = w - 1 - x; dst_y = y; break;
+                case 3: dst_x = w - 1 - x; dst_y = h - 1 - y; break;
+                case 4: dst_x = x; dst_y = h - 1 - y; break;
+                case 5: dst_x = y; dst_y = x; break;
+                case 6: dst_x = h - 1 - y; dst_y = x; break;
+                case 7: dst_x = h - 1 - y; dst_y = w - 1 - x; break;
+                case 8: dst_x = y; dst_y = w - 1 - x; break;
+                default: dst_x = x; dst_y = y; break;
+            }
+            int dst_idx = (dst_y * new_w + dst_x) * channels;
+            for (int c = 0; c < channels; c++) {
+                result[dst_idx + c] = pixels[src_idx + c];
+            }
+        }
+    }
+    free(pixels);
+    *width = new_w;
+    *height = new_h;
+    return result;
+}
+
+// ============================================================================
+// Helper: decode image with EXIF orientation correction
+// ============================================================================
+
+static uint8_t* decode_image(const uint8_t* input_data, int input_size,
+                              int* w, int* h, int* channels) {
+    int jpeg = is_jpeg(input_data, input_size);
+    int orientation = 1;
+    if (jpeg) {
+        orientation = parse_exif_orientation(input_data, input_size);
+    }
+
+    uint8_t* pixels = stbi_load_from_memory(
+        input_data, input_size, w, h, channels, 0);
+    if (pixels == NULL) return NULL;
+
+    if (*channels != 3 && *channels != 4) {
+        stbi_image_free(pixels);
+        pixels = stbi_load_from_memory(
+            input_data, input_size, w, h, channels, 3);
+        if (pixels == NULL) return NULL;
+        *channels = 3;
+    }
+
+    if (jpeg && orientation != 1) {
+        pixels = apply_orientation(pixels, w, h, *channels, orientation);
+    }
+
+    return pixels;
 }
 
 // ============================================================================
@@ -125,7 +289,9 @@ static int encode_output(uint8_t* pixels, int w, int h, int channels,
 static void box_blur_horizontal(uint8_t* src, uint8_t* dst, int w, int h,
                                 int channels, int radius,
                                 float region_top, float region_bottom,
-                                float region_left, float region_right) {
+                                float region_left, float region_right,
+                                float radial_cx, float radial_cy,
+                                float radial_radius) {
     for (int y = 0; y < h; y++) {
         // Running sum accumulators
         int sum[4] = {0, 0, 0, 0};
@@ -145,7 +311,8 @@ static void box_blur_horizontal(uint8_t* src, uint8_t* dst, int w, int h,
             int dst_idx = (y * w + x) * channels;
 
             if (in_region(x, y, w, h, region_top, region_bottom,
-                          region_left, region_right)) {
+                          region_left, region_right,
+                          radial_cx, radial_cy, radial_radius)) {
                 for (int c = 0; c < channels; c++) {
                     dst[dst_idx + c] = (uint8_t)(sum[c] / count);
                 }
@@ -186,7 +353,9 @@ static void box_blur_horizontal(uint8_t* src, uint8_t* dst, int w, int h,
 static void box_blur_vertical(uint8_t* src, uint8_t* dst, int w, int h,
                                int channels, int radius,
                                float region_top, float region_bottom,
-                               float region_left, float region_right) {
+                               float region_left, float region_right,
+                               float radial_cx, float radial_cy,
+                               float radial_radius) {
     for (int x = 0; x < w; x++) {
         int sum[4] = {0, 0, 0, 0};
         int count = 0;
@@ -204,7 +373,8 @@ static void box_blur_vertical(uint8_t* src, uint8_t* dst, int w, int h,
             int dst_idx = (y * w + x) * channels;
 
             if (in_region(x, y, w, h, region_top, region_bottom,
-                          region_left, region_right)) {
+                          region_left, region_right,
+                          radial_cx, radial_cy, radial_radius)) {
                 for (int c = 0; c < channels; c++) {
                     dst[dst_idx + c] = (uint8_t)(sum[c] / count);
                 }
@@ -252,6 +422,9 @@ FFI_EXPORT int image_edit_blur(
     float region_bottom,
     float region_left,
     float region_right,
+    float radial_cx,
+    float radial_cy,
+    float radial_radius,
     uint8_t** output_data,
     int* output_size,
     int quality
@@ -264,18 +437,8 @@ FFI_EXPORT int image_edit_blur(
 
     int png_format = is_png(input_data, input_size);
     int w, h, channels;
-    uint8_t* pixels = stbi_load_from_memory(
-        input_data, input_size, &w, &h, &channels, 0);
+    uint8_t* pixels = decode_image(input_data, input_size, &w, &h, &channels);
     if (pixels == NULL) return EDIT_ERROR_DECODE_FAILED;
-
-    // Limit channels to 3 or 4
-    if (channels != 3 && channels != 4) {
-        stbi_image_free(pixels);
-        pixels = stbi_load_from_memory(
-            input_data, input_size, &w, &h, &channels, 3);
-        if (pixels == NULL) return EDIT_ERROR_DECODE_FAILED;
-        channels = 3;
-    }
 
     int pixel_count = w * h * channels;
     uint8_t* tmp = (uint8_t*)malloc(pixel_count);
@@ -287,9 +450,11 @@ FFI_EXPORT int image_edit_blur(
     // 3 passes of box blur for Gaussian approximation
     for (int pass = 0; pass < 3; pass++) {
         box_blur_horizontal(pixels, tmp, w, h, channels, radius,
-                            region_top, region_bottom, region_left, region_right);
+                            region_top, region_bottom, region_left, region_right,
+                            radial_cx, radial_cy, radial_radius);
         box_blur_vertical(tmp, pixels, w, h, channels, radius,
-                          region_top, region_bottom, region_left, region_right);
+                          region_top, region_bottom, region_left, region_right,
+                          radial_cx, radial_cy, radial_radius);
     }
 
     free(tmp);
@@ -312,6 +477,9 @@ FFI_EXPORT int image_edit_sepia(
     float region_bottom,
     float region_left,
     float region_right,
+    float radial_cx,
+    float radial_cy,
+    float radial_radius,
     uint8_t** output_data,
     int* output_size,
     int quality
@@ -325,22 +493,14 @@ FFI_EXPORT int image_edit_sepia(
 
     int png_format = is_png(input_data, input_size);
     int w, h, channels;
-    uint8_t* pixels = stbi_load_from_memory(
-        input_data, input_size, &w, &h, &channels, 0);
+    uint8_t* pixels = decode_image(input_data, input_size, &w, &h, &channels);
     if (pixels == NULL) return EDIT_ERROR_DECODE_FAILED;
-
-    if (channels != 3 && channels != 4) {
-        stbi_image_free(pixels);
-        pixels = stbi_load_from_memory(
-            input_data, input_size, &w, &h, &channels, 3);
-        if (pixels == NULL) return EDIT_ERROR_DECODE_FAILED;
-        channels = 3;
-    }
 
     for (int y = 0; y < h; y++) {
         for (int x = 0; x < w; x++) {
             if (!in_region(x, y, w, h, region_top, region_bottom,
-                           region_left, region_right)) continue;
+                           region_left, region_right,
+                           radial_cx, radial_cy, radial_radius)) continue;
 
             int idx = (y * w + x) * channels;
             int r = pixels[idx];
@@ -375,6 +535,9 @@ FFI_EXPORT int image_edit_saturation(
     float region_bottom,
     float region_left,
     float region_right,
+    float radial_cx,
+    float radial_cy,
+    float radial_radius,
     uint8_t** output_data,
     int* output_size,
     int quality
@@ -386,22 +549,14 @@ FFI_EXPORT int image_edit_saturation(
 
     int png_format = is_png(input_data, input_size);
     int w, h, channels;
-    uint8_t* pixels = stbi_load_from_memory(
-        input_data, input_size, &w, &h, &channels, 0);
+    uint8_t* pixels = decode_image(input_data, input_size, &w, &h, &channels);
     if (pixels == NULL) return EDIT_ERROR_DECODE_FAILED;
-
-    if (channels != 3 && channels != 4) {
-        stbi_image_free(pixels);
-        pixels = stbi_load_from_memory(
-            input_data, input_size, &w, &h, &channels, 3);
-        if (pixels == NULL) return EDIT_ERROR_DECODE_FAILED;
-        channels = 3;
-    }
 
     for (int y = 0; y < h; y++) {
         for (int x = 0; x < w; x++) {
             if (!in_region(x, y, w, h, region_top, region_bottom,
-                           region_left, region_right)) continue;
+                           region_left, region_right,
+                           radial_cx, radial_cy, radial_radius)) continue;
 
             int idx = (y * w + x) * channels;
             float r = pixels[idx];
@@ -434,6 +589,9 @@ FFI_EXPORT int image_edit_brightness(
     float region_bottom,
     float region_left,
     float region_right,
+    float radial_cx,
+    float radial_cy,
+    float radial_radius,
     uint8_t** output_data,
     int* output_size,
     int quality
@@ -447,24 +605,16 @@ FFI_EXPORT int image_edit_brightness(
 
     int png_format = is_png(input_data, input_size);
     int w, h, channels;
-    uint8_t* pixels = stbi_load_from_memory(
-        input_data, input_size, &w, &h, &channels, 0);
+    uint8_t* pixels = decode_image(input_data, input_size, &w, &h, &channels);
     if (pixels == NULL) return EDIT_ERROR_DECODE_FAILED;
-
-    if (channels != 3 && channels != 4) {
-        stbi_image_free(pixels);
-        pixels = stbi_load_from_memory(
-            input_data, input_size, &w, &h, &channels, 3);
-        if (pixels == NULL) return EDIT_ERROR_DECODE_FAILED;
-        channels = 3;
-    }
 
     int adjustment = (int)(factor * 255.0f);
 
     for (int y = 0; y < h; y++) {
         for (int x = 0; x < w; x++) {
             if (!in_region(x, y, w, h, region_top, region_bottom,
-                           region_left, region_right)) continue;
+                           region_left, region_right,
+                           radial_cx, radial_cy, radial_radius)) continue;
 
             int idx = (y * w + x) * channels;
             pixels[idx]     = (uint8_t)clamp255(pixels[idx] + adjustment);
@@ -491,6 +641,9 @@ FFI_EXPORT int image_edit_contrast(
     float region_bottom,
     float region_left,
     float region_right,
+    float radial_cx,
+    float radial_cy,
+    float radial_radius,
     uint8_t** output_data,
     int* output_size,
     int quality
@@ -502,22 +655,14 @@ FFI_EXPORT int image_edit_contrast(
 
     int png_format = is_png(input_data, input_size);
     int w, h, channels;
-    uint8_t* pixels = stbi_load_from_memory(
-        input_data, input_size, &w, &h, &channels, 0);
+    uint8_t* pixels = decode_image(input_data, input_size, &w, &h, &channels);
     if (pixels == NULL) return EDIT_ERROR_DECODE_FAILED;
-
-    if (channels != 3 && channels != 4) {
-        stbi_image_free(pixels);
-        pixels = stbi_load_from_memory(
-            input_data, input_size, &w, &h, &channels, 3);
-        if (pixels == NULL) return EDIT_ERROR_DECODE_FAILED;
-        channels = 3;
-    }
 
     for (int y = 0; y < h; y++) {
         for (int x = 0; x < w; x++) {
             if (!in_region(x, y, w, h, region_top, region_bottom,
-                           region_left, region_right)) continue;
+                           region_left, region_right,
+                           radial_cx, radial_cy, radial_radius)) continue;
 
             int idx = (y * w + x) * channels;
             for (int c = 0; c < 3; c++) {
@@ -547,6 +692,9 @@ FFI_EXPORT int image_edit_sharpen(
     float region_bottom,
     float region_left,
     float region_right,
+    float radial_cx,
+    float radial_cy,
+    float radial_radius,
     uint8_t** output_data,
     int* output_size,
     int quality
@@ -560,17 +708,8 @@ FFI_EXPORT int image_edit_sharpen(
 
     int png_format = is_png(input_data, input_size);
     int w, h, channels;
-    uint8_t* pixels = stbi_load_from_memory(
-        input_data, input_size, &w, &h, &channels, 0);
+    uint8_t* pixels = decode_image(input_data, input_size, &w, &h, &channels);
     if (pixels == NULL) return EDIT_ERROR_DECODE_FAILED;
-
-    if (channels != 3 && channels != 4) {
-        stbi_image_free(pixels);
-        pixels = stbi_load_from_memory(
-            input_data, input_size, &w, &h, &channels, 3);
-        if (pixels == NULL) return EDIT_ERROR_DECODE_FAILED;
-        channels = 3;
-    }
 
     int pixel_count = w * h * channels;
 
@@ -589,9 +728,9 @@ FFI_EXPORT int image_edit_sharpen(
     // Blur the copy (full image, region is applied only when compositing)
     for (int pass = 0; pass < 3; pass++) {
         box_blur_horizontal(blurred, tmp, w, h, channels, radius,
-                            0.0f, 0.0f, 0.0f, 0.0f);
+                            0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
         box_blur_vertical(tmp, blurred, w, h, channels, radius,
-                          0.0f, 0.0f, 0.0f, 0.0f);
+                          0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
     }
 
     free(tmp);
@@ -600,7 +739,8 @@ FFI_EXPORT int image_edit_sharpen(
     for (int y = 0; y < h; y++) {
         for (int x = 0; x < w; x++) {
             if (!in_region(x, y, w, h, region_top, region_bottom,
-                           region_left, region_right)) continue;
+                           region_left, region_right,
+                           radial_cx, radial_cy, radial_radius)) continue;
 
             int idx = (y * w + x) * channels;
             for (int c = 0; c < 3; c++) {
@@ -630,6 +770,9 @@ FFI_EXPORT int image_edit_grayscale(
     float region_bottom,
     float region_left,
     float region_right,
+    float radial_cx,
+    float radial_cy,
+    float radial_radius,
     uint8_t** output_data,
     int* output_size,
     int quality
@@ -641,22 +784,14 @@ FFI_EXPORT int image_edit_grayscale(
 
     int png_format = is_png(input_data, input_size);
     int w, h, channels;
-    uint8_t* pixels = stbi_load_from_memory(
-        input_data, input_size, &w, &h, &channels, 0);
+    uint8_t* pixels = decode_image(input_data, input_size, &w, &h, &channels);
     if (pixels == NULL) return EDIT_ERROR_DECODE_FAILED;
-
-    if (channels != 3 && channels != 4) {
-        stbi_image_free(pixels);
-        pixels = stbi_load_from_memory(
-            input_data, input_size, &w, &h, &channels, 3);
-        if (pixels == NULL) return EDIT_ERROR_DECODE_FAILED;
-        channels = 3;
-    }
 
     for (int y = 0; y < h; y++) {
         for (int x = 0; x < w; x++) {
             if (!in_region(x, y, w, h, region_top, region_bottom,
-                           region_left, region_right)) continue;
+                           region_left, region_right,
+                           radial_cx, radial_cy, radial_radius)) continue;
 
             int idx = (y * w + x) * channels;
             float r = pixels[idx];

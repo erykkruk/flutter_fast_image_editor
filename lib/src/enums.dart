@@ -7,7 +7,7 @@ enum ImageFormat {
   png,
 }
 
-/// Region of the image where an effect should be applied.
+/// Rectangular region of the image where an effect should be applied.
 ///
 /// Values are percentages from each edge (0.0 to 1.0).
 /// When all values are 0.0, the effect applies to the entire image.
@@ -42,4 +42,39 @@ class EditRegion {
 
   /// Apply effect to the entire image.
   static const EditRegion full = EditRegion();
+}
+
+/// Radial (circular) region of the image where an effect should be applied.
+///
+/// Uses Alignment-style coordinates:
+/// - [centerX]: -1.0 = left edge, 0.0 = center, 1.0 = right edge
+/// - [centerY]: -1.0 = top edge, 0.0 = center, 1.0 = bottom edge
+/// - [radius]: 0.0-1.0 as fraction of min(width, height)
+///
+/// ```dart
+/// // Blur a circle in the center of the image
+/// final radial = RadialRegion(centerX: 0.0, centerY: 0.0, radius: 0.3);
+///
+/// // Blur a circle in the top-left corner
+/// final topLeft = RadialRegion(centerX: -1.0, centerY: -1.0, radius: 0.2);
+/// ```
+class RadialRegion {
+  /// Horizontal center position using Alignment convention.
+  /// -1.0 = left edge, 0.0 = center, 1.0 = right edge.
+  final double centerX;
+
+  /// Vertical center position using Alignment convention.
+  /// -1.0 = top edge, 0.0 = center, 1.0 = bottom edge.
+  final double centerY;
+
+  /// Radius as fraction of min(image width, image height).
+  /// Range: 0.0-1.0.
+  final double radius;
+
+  /// Creates a radial region with the given center and radius.
+  const RadialRegion({
+    this.centerX = 0.0,
+    this.centerY = 0.0,
+    required this.radius,
+  });
 }

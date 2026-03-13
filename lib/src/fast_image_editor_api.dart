@@ -23,6 +23,12 @@ void _throwIfError(int result) {
 /// All methods are static. Each filter has a sync and async (Isolate) variant.
 /// The async variants run in a separate isolate to avoid blocking the UI thread.
 ///
+/// Supports two region types:
+/// - [EditRegion] — rectangular region defined by edge percentages
+/// - [RadialRegion] — circular region defined by center position and radius
+///
+/// When [radialRegion] is provided, [region] is ignored.
+///
 /// ```dart
 /// // Blur entire image
 /// final blurred = FastImageEditor.blur(bytes: imageBytes, radius: 15);
@@ -33,8 +39,12 @@ void _throwIfError(int result) {
 ///   region: EditRegion(top: 0.3),
 /// );
 ///
-/// // Async variant
-/// final result = await FastImageEditor.blurAsync(bytes: imageBytes, radius: 10);
+/// // Blur a circle in the center
+/// final radialBlur = FastImageEditor.blur(
+///   bytes: imageBytes,
+///   radius: 20,
+///   radialRegion: RadialRegion(centerX: 0.0, centerY: 0.0, radius: 0.3),
+/// );
 /// ```
 class FastImageEditor {
   // ============================================================================
@@ -119,15 +129,20 @@ class FastImageEditor {
   ///
   /// [bytes] - JPEG or PNG image data.
   /// [radius] - Blur radius in pixels (must be >= 1).
-  /// [region] - Region to apply the effect to. Null = entire image.
+  /// [region] - Rectangular region to apply the effect to. Null = entire image.
+  /// [radialRegion] - Circular region. When provided, [region] is ignored.
   /// [quality] - JPEG output quality (1-100, default 90). Ignored for PNG.
   static Uint8List blur({
     required Uint8List bytes,
     int radius = 10,
     EditRegion? region,
+    RadialRegion? radialRegion,
     int quality = 90,
   }) {
     final r = region ?? EditRegion.full;
+    final rcx = radialRegion?.centerX ?? 0.0;
+    final rcy = radialRegion?.centerY ?? 0.0;
+    final rr = radialRegion?.radius ?? 0.0;
     return _callNative(
       bytes: bytes,
       nativeCall: (inputPtr, inputSize, outputDataPtr, outputSizePtr) {
@@ -139,6 +154,9 @@ class FastImageEditor {
           r.bottom,
           r.left,
           r.right,
+          rcx,
+          rcy,
+          rr,
           outputDataPtr,
           outputSizePtr,
           quality,
@@ -152,11 +170,17 @@ class FastImageEditor {
     required Uint8List bytes,
     int radius = 10,
     EditRegion? region,
+    RadialRegion? radialRegion,
     int quality = 90,
   }) {
     return Isolate.run(
-      () =>
-          blur(bytes: bytes, radius: radius, region: region, quality: quality),
+      () => blur(
+        bytes: bytes,
+        radius: radius,
+        region: region,
+        radialRegion: radialRegion,
+        quality: quality,
+      ),
     );
   }
 
@@ -168,15 +192,20 @@ class FastImageEditor {
   ///
   /// [bytes] - JPEG or PNG image data.
   /// [intensity] - Sepia intensity (0.0 = original, 1.0 = full sepia).
-  /// [region] - Region to apply the effect to. Null = entire image.
+  /// [region] - Rectangular region. Null = entire image.
+  /// [radialRegion] - Circular region. When provided, [region] is ignored.
   /// [quality] - JPEG output quality (1-100, default 90). Ignored for PNG.
   static Uint8List sepia({
     required Uint8List bytes,
     double intensity = 1.0,
     EditRegion? region,
+    RadialRegion? radialRegion,
     int quality = 90,
   }) {
     final r = region ?? EditRegion.full;
+    final rcx = radialRegion?.centerX ?? 0.0;
+    final rcy = radialRegion?.centerY ?? 0.0;
+    final rr = radialRegion?.radius ?? 0.0;
     return _callNative(
       bytes: bytes,
       nativeCall: (inputPtr, inputSize, outputDataPtr, outputSizePtr) {
@@ -188,6 +217,9 @@ class FastImageEditor {
           r.bottom,
           r.left,
           r.right,
+          rcx,
+          rcy,
+          rr,
           outputDataPtr,
           outputSizePtr,
           quality,
@@ -201,11 +233,17 @@ class FastImageEditor {
     required Uint8List bytes,
     double intensity = 1.0,
     EditRegion? region,
+    RadialRegion? radialRegion,
     int quality = 90,
   }) {
     return Isolate.run(
       () => sepia(
-          bytes: bytes, intensity: intensity, region: region, quality: quality),
+        bytes: bytes,
+        intensity: intensity,
+        region: region,
+        radialRegion: radialRegion,
+        quality: quality,
+      ),
     );
   }
 
@@ -217,15 +255,20 @@ class FastImageEditor {
   ///
   /// [bytes] - JPEG or PNG image data.
   /// [factor] - Saturation factor (0.0 = grayscale, 1.0 = original, 2.0 = double).
-  /// [region] - Region to apply the effect to. Null = entire image.
+  /// [region] - Rectangular region. Null = entire image.
+  /// [radialRegion] - Circular region. When provided, [region] is ignored.
   /// [quality] - JPEG output quality (1-100, default 90). Ignored for PNG.
   static Uint8List saturation({
     required Uint8List bytes,
     required double factor,
     EditRegion? region,
+    RadialRegion? radialRegion,
     int quality = 90,
   }) {
     final r = region ?? EditRegion.full;
+    final rcx = radialRegion?.centerX ?? 0.0;
+    final rcy = radialRegion?.centerY ?? 0.0;
+    final rr = radialRegion?.radius ?? 0.0;
     return _callNative(
       bytes: bytes,
       nativeCall: (inputPtr, inputSize, outputDataPtr, outputSizePtr) {
@@ -237,6 +280,9 @@ class FastImageEditor {
           r.bottom,
           r.left,
           r.right,
+          rcx,
+          rcy,
+          rr,
           outputDataPtr,
           outputSizePtr,
           quality,
@@ -250,11 +296,17 @@ class FastImageEditor {
     required Uint8List bytes,
     required double factor,
     EditRegion? region,
+    RadialRegion? radialRegion,
     int quality = 90,
   }) {
     return Isolate.run(
       () => saturation(
-          bytes: bytes, factor: factor, region: region, quality: quality),
+        bytes: bytes,
+        factor: factor,
+        region: region,
+        radialRegion: radialRegion,
+        quality: quality,
+      ),
     );
   }
 
@@ -266,15 +318,20 @@ class FastImageEditor {
   ///
   /// [bytes] - JPEG or PNG image data.
   /// [factor] - Brightness factor (-1.0 to 1.0, 0.0 = no change).
-  /// [region] - Region to apply the effect to. Null = entire image.
+  /// [region] - Rectangular region. Null = entire image.
+  /// [radialRegion] - Circular region. When provided, [region] is ignored.
   /// [quality] - JPEG output quality (1-100, default 90). Ignored for PNG.
   static Uint8List brightness({
     required Uint8List bytes,
     required double factor,
     EditRegion? region,
+    RadialRegion? radialRegion,
     int quality = 90,
   }) {
     final r = region ?? EditRegion.full;
+    final rcx = radialRegion?.centerX ?? 0.0;
+    final rcy = radialRegion?.centerY ?? 0.0;
+    final rr = radialRegion?.radius ?? 0.0;
     return _callNative(
       bytes: bytes,
       nativeCall: (inputPtr, inputSize, outputDataPtr, outputSizePtr) {
@@ -286,6 +343,9 @@ class FastImageEditor {
           r.bottom,
           r.left,
           r.right,
+          rcx,
+          rcy,
+          rr,
           outputDataPtr,
           outputSizePtr,
           quality,
@@ -299,11 +359,17 @@ class FastImageEditor {
     required Uint8List bytes,
     required double factor,
     EditRegion? region,
+    RadialRegion? radialRegion,
     int quality = 90,
   }) {
     return Isolate.run(
       () => brightness(
-          bytes: bytes, factor: factor, region: region, quality: quality),
+        bytes: bytes,
+        factor: factor,
+        region: region,
+        radialRegion: radialRegion,
+        quality: quality,
+      ),
     );
   }
 
@@ -315,15 +381,20 @@ class FastImageEditor {
   ///
   /// [bytes] - JPEG or PNG image data.
   /// [factor] - Contrast factor (0.0 to 2.0, 1.0 = original).
-  /// [region] - Region to apply the effect to. Null = entire image.
+  /// [region] - Rectangular region. Null = entire image.
+  /// [radialRegion] - Circular region. When provided, [region] is ignored.
   /// [quality] - JPEG output quality (1-100, default 90). Ignored for PNG.
   static Uint8List contrast({
     required Uint8List bytes,
     required double factor,
     EditRegion? region,
+    RadialRegion? radialRegion,
     int quality = 90,
   }) {
     final r = region ?? EditRegion.full;
+    final rcx = radialRegion?.centerX ?? 0.0;
+    final rcy = radialRegion?.centerY ?? 0.0;
+    final rr = radialRegion?.radius ?? 0.0;
     return _callNative(
       bytes: bytes,
       nativeCall: (inputPtr, inputSize, outputDataPtr, outputSizePtr) {
@@ -335,6 +406,9 @@ class FastImageEditor {
           r.bottom,
           r.left,
           r.right,
+          rcx,
+          rcy,
+          rr,
           outputDataPtr,
           outputSizePtr,
           quality,
@@ -348,11 +422,17 @@ class FastImageEditor {
     required Uint8List bytes,
     required double factor,
     EditRegion? region,
+    RadialRegion? radialRegion,
     int quality = 90,
   }) {
     return Isolate.run(
       () => contrast(
-          bytes: bytes, factor: factor, region: region, quality: quality),
+        bytes: bytes,
+        factor: factor,
+        region: region,
+        radialRegion: radialRegion,
+        quality: quality,
+      ),
     );
   }
 
@@ -365,16 +445,21 @@ class FastImageEditor {
   /// [bytes] - JPEG or PNG image data.
   /// [amount] - Sharpening amount (0.0-5.0, default 1.0).
   /// [radius] - Blur radius for unsharp mask (1-10, default 1).
-  /// [region] - Region to apply the effect to. Null = entire image.
+  /// [region] - Rectangular region. Null = entire image.
+  /// [radialRegion] - Circular region. When provided, [region] is ignored.
   /// [quality] - JPEG output quality (1-100, default 90). Ignored for PNG.
   static Uint8List sharpen({
     required Uint8List bytes,
     double amount = 1.0,
     int radius = 1,
     EditRegion? region,
+    RadialRegion? radialRegion,
     int quality = 90,
   }) {
     final r = region ?? EditRegion.full;
+    final rcx = radialRegion?.centerX ?? 0.0;
+    final rcy = radialRegion?.centerY ?? 0.0;
+    final rr = radialRegion?.radius ?? 0.0;
     return _callNative(
       bytes: bytes,
       nativeCall: (inputPtr, inputSize, outputDataPtr, outputSizePtr) {
@@ -387,6 +472,9 @@ class FastImageEditor {
           r.bottom,
           r.left,
           r.right,
+          rcx,
+          rcy,
+          rr,
           outputDataPtr,
           outputSizePtr,
           quality,
@@ -401,15 +489,18 @@ class FastImageEditor {
     double amount = 1.0,
     int radius = 1,
     EditRegion? region,
+    RadialRegion? radialRegion,
     int quality = 90,
   }) {
     return Isolate.run(
       () => sharpen(
-          bytes: bytes,
-          amount: amount,
-          radius: radius,
-          region: region,
-          quality: quality),
+        bytes: bytes,
+        amount: amount,
+        radius: radius,
+        region: region,
+        radialRegion: radialRegion,
+        quality: quality,
+      ),
     );
   }
 
@@ -422,14 +513,19 @@ class FastImageEditor {
   /// Uses luminance formula: 0.2126R + 0.7152G + 0.0722B.
   ///
   /// [bytes] - JPEG or PNG image data.
-  /// [region] - Region to apply the effect to. Null = entire image.
+  /// [region] - Rectangular region. Null = entire image.
+  /// [radialRegion] - Circular region. When provided, [region] is ignored.
   /// [quality] - JPEG output quality (1-100, default 90). Ignored for PNG.
   static Uint8List grayscale({
     required Uint8List bytes,
     EditRegion? region,
+    RadialRegion? radialRegion,
     int quality = 90,
   }) {
     final r = region ?? EditRegion.full;
+    final rcx = radialRegion?.centerX ?? 0.0;
+    final rcy = radialRegion?.centerY ?? 0.0;
+    final rr = radialRegion?.radius ?? 0.0;
     return _callNative(
       bytes: bytes,
       nativeCall: (inputPtr, inputSize, outputDataPtr, outputSizePtr) {
@@ -440,6 +536,9 @@ class FastImageEditor {
           r.bottom,
           r.left,
           r.right,
+          rcx,
+          rcy,
+          rr,
           outputDataPtr,
           outputSizePtr,
           quality,
@@ -452,10 +551,16 @@ class FastImageEditor {
   static Future<Uint8List> grayscaleAsync({
     required Uint8List bytes,
     EditRegion? region,
+    RadialRegion? radialRegion,
     int quality = 90,
   }) {
     return Isolate.run(
-      () => grayscale(bytes: bytes, region: region, quality: quality),
+      () => grayscale(
+        bytes: bytes,
+        region: region,
+        radialRegion: radialRegion,
+        quality: quality,
+      ),
     );
   }
 }
