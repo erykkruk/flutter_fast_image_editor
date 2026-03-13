@@ -39,6 +39,7 @@ enum FilterType {
   contrast,
   sharpen,
   saturation,
+  resize,
 }
 
 enum RegionMode { full, rect, radial }
@@ -61,6 +62,10 @@ class _EditorDemoState extends State<EditorDemo> {
   double _sharpenAmount = 2.0;
   int _sharpenRadius = 2;
   double _saturationFactor = 2.0;
+
+  // Resize params
+  double _resizeWidth = 800;
+  double _resizeHeight = 600;
 
   // Rect region params
   double _regionTop = 0.0;
@@ -88,7 +93,7 @@ class _EditorDemoState extends State<EditorDemo> {
     });
   }
 
-  void _applyFilter() {
+  Future<void> _applyFilter() async {
     if (_originalBytes == null) return;
     setState(() => _processing = true);
 
@@ -114,41 +119,41 @@ class _EditorDemoState extends State<EditorDemo> {
       final Uint8List result;
       switch (_selectedFilter) {
         case FilterType.blur:
-          result = FastImageEditor.blur(
+          result = await FastImageEditor.blurAsync(
             bytes: _originalBytes!,
             radius: _blurRadius.round(),
             region: region,
             radialRegion: radialRegion,
           );
         case FilterType.sepia:
-          result = FastImageEditor.sepia(
+          result = await FastImageEditor.sepiaAsync(
             bytes: _originalBytes!,
             intensity: _sepiaIntensity,
             region: region,
             radialRegion: radialRegion,
           );
         case FilterType.grayscale:
-          result = FastImageEditor.grayscale(
+          result = await FastImageEditor.grayscaleAsync(
             bytes: _originalBytes!,
             region: region,
             radialRegion: radialRegion,
           );
         case FilterType.brightness:
-          result = FastImageEditor.brightness(
+          result = await FastImageEditor.brightnessAsync(
             bytes: _originalBytes!,
             factor: _brightnessFactor,
             region: region,
             radialRegion: radialRegion,
           );
         case FilterType.contrast:
-          result = FastImageEditor.contrast(
+          result = await FastImageEditor.contrastAsync(
             bytes: _originalBytes!,
             factor: _contrastFactor,
             region: region,
             radialRegion: radialRegion,
           );
         case FilterType.sharpen:
-          result = FastImageEditor.sharpen(
+          result = await FastImageEditor.sharpenAsync(
             bytes: _originalBytes!,
             amount: _sharpenAmount,
             radius: _sharpenRadius,
@@ -156,17 +161,25 @@ class _EditorDemoState extends State<EditorDemo> {
             radialRegion: radialRegion,
           );
         case FilterType.saturation:
-          result = FastImageEditor.saturation(
+          result = await FastImageEditor.saturationAsync(
             bytes: _originalBytes!,
             factor: _saturationFactor,
             region: region,
             radialRegion: radialRegion,
           );
+        case FilterType.resize:
+          result = await FastImageEditor.resizeAsync(
+            bytes: _originalBytes!,
+            outputWidth: _resizeWidth.round(),
+            outputHeight: _resizeHeight.round(),
+          );
       }
 
-      setState(() {
-        _editedBytes = result;
-      });
+      if (mounted) {
+        setState(() {
+          _editedBytes = result;
+        });
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -174,7 +187,9 @@ class _EditorDemoState extends State<EditorDemo> {
         );
       }
     } finally {
-      setState(() => _processing = false);
+      if (mounted) {
+        setState(() => _processing = false);
+      }
     }
   }
 
@@ -238,80 +253,85 @@ class _EditorDemoState extends State<EditorDemo> {
                 // Filter-specific params
                 ..._buildFilterParams(update),
 
-                const Divider(height: 32),
+                // Region only for non-resize filters
+                if (_selectedFilter != FilterType.resize) ...[
+                  const Divider(height: 32),
 
-                // Region mode
-                Text(
-                  'Region',
-                  style: Theme.of(context).textTheme.titleSmall,
-                ),
-                const SizedBox(height: 8),
-                SegmentedButton<RegionMode>(
-                  segments: const [
-                    ButtonSegment(value: RegionMode.full, label: Text('Full')),
-                    ButtonSegment(value: RegionMode.rect, label: Text('Rect')),
-                    ButtonSegment(
-                        value: RegionMode.radial, label: Text('Radial')),
+                  // Region mode
+                  Text(
+                    'Region',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                  const SizedBox(height: 8),
+                  SegmentedButton<RegionMode>(
+                    segments: const [
+                      ButtonSegment(
+                          value: RegionMode.full, label: Text('Full')),
+                      ButtonSegment(
+                          value: RegionMode.rect, label: Text('Rect')),
+                      ButtonSegment(
+                          value: RegionMode.radial, label: Text('Radial')),
+                    ],
+                    selected: {_regionMode},
+                    onSelectionChanged: (v) =>
+                        update(() => _regionMode = v.first),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Region params
+                  if (_regionMode == RegionMode.rect) ...[
+                    _SliderRow(
+                      label: 'Top',
+                      value: _regionTop,
+                      min: 0,
+                      max: 1,
+                      onChanged: (v) => update(() => _regionTop = v),
+                    ),
+                    _SliderRow(
+                      label: 'Bottom',
+                      value: _regionBottom,
+                      min: 0,
+                      max: 1,
+                      onChanged: (v) => update(() => _regionBottom = v),
+                    ),
+                    _SliderRow(
+                      label: 'Left',
+                      value: _regionLeft,
+                      min: 0,
+                      max: 1,
+                      onChanged: (v) => update(() => _regionLeft = v),
+                    ),
+                    _SliderRow(
+                      label: 'Right',
+                      value: _regionRight,
+                      min: 0,
+                      max: 1,
+                      onChanged: (v) => update(() => _regionRight = v),
+                    ),
                   ],
-                  selected: {_regionMode},
-                  onSelectionChanged: (v) =>
-                      update(() => _regionMode = v.first),
-                ),
-                const SizedBox(height: 16),
-
-                // Region params
-                if (_regionMode == RegionMode.rect) ...[
-                  _SliderRow(
-                    label: 'Top',
-                    value: _regionTop,
-                    min: 0,
-                    max: 1,
-                    onChanged: (v) => update(() => _regionTop = v),
-                  ),
-                  _SliderRow(
-                    label: 'Bottom',
-                    value: _regionBottom,
-                    min: 0,
-                    max: 1,
-                    onChanged: (v) => update(() => _regionBottom = v),
-                  ),
-                  _SliderRow(
-                    label: 'Left',
-                    value: _regionLeft,
-                    min: 0,
-                    max: 1,
-                    onChanged: (v) => update(() => _regionLeft = v),
-                  ),
-                  _SliderRow(
-                    label: 'Right',
-                    value: _regionRight,
-                    min: 0,
-                    max: 1,
-                    onChanged: (v) => update(() => _regionRight = v),
-                  ),
-                ],
-                if (_regionMode == RegionMode.radial) ...[
-                  _SliderRow(
-                    label: 'Center X',
-                    value: _radialCx,
-                    min: -1,
-                    max: 1,
-                    onChanged: (v) => update(() => _radialCx = v),
-                  ),
-                  _SliderRow(
-                    label: 'Center Y',
-                    value: _radialCy,
-                    min: -1,
-                    max: 1,
-                    onChanged: (v) => update(() => _radialCy = v),
-                  ),
-                  _SliderRow(
-                    label: 'Radius',
-                    value: _radialRadius,
-                    min: 0.01,
-                    max: 1,
-                    onChanged: (v) => update(() => _radialRadius = v),
-                  ),
+                  if (_regionMode == RegionMode.radial) ...[
+                    _SliderRow(
+                      label: 'Center X',
+                      value: _radialCx,
+                      min: -1,
+                      max: 1,
+                      onChanged: (v) => update(() => _radialCx = v),
+                    ),
+                    _SliderRow(
+                      label: 'Center Y',
+                      value: _radialCy,
+                      min: -1,
+                      max: 1,
+                      onChanged: (v) => update(() => _radialCy = v),
+                    ),
+                    _SliderRow(
+                      label: 'Radius',
+                      value: _radialRadius,
+                      min: 0.01,
+                      max: 1,
+                      onChanged: (v) => update(() => _radialRadius = v),
+                    ),
+                  ],
                 ],
 
                 const SizedBox(height: 16),
@@ -407,6 +427,25 @@ class _EditorDemoState extends State<EditorDemo> {
             onChanged: (v) => update(() => _saturationFactor = v),
           ),
         ];
+      case FilterType.resize:
+        return [
+          _SliderRow(
+            label: 'Width',
+            value: _resizeWidth,
+            min: 100,
+            max: 2048,
+            divisions: 194,
+            onChanged: (v) => update(() => _resizeWidth = v),
+          ),
+          _SliderRow(
+            label: 'Height',
+            value: _resizeHeight,
+            min: 100,
+            max: 2048,
+            divisions: 194,
+            onChanged: (v) => update(() => _resizeHeight = v),
+          ),
+        ];
     }
   }
 
@@ -424,7 +463,7 @@ class _EditorDemoState extends State<EditorDemo> {
           if (_originalBytes != null)
             FloatingActionButton(
               heroTag: 'filter',
-              onPressed: _showFilterSheet,
+              onPressed: _processing ? null : _showFilterSheet,
               child: const Icon(Icons.tune),
             ),
           if (_originalBytes != null) const SizedBox(height: 12),
@@ -439,20 +478,28 @@ class _EditorDemoState extends State<EditorDemo> {
         children: [
           Expanded(
             child: Center(
-              child: bytes != null
-                  ? Image.memory(bytes, fit: BoxFit.contain)
-                  : const Column(
+              child: _processing
+                  ? const Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.image, size: 64, color: Colors.grey),
+                        CircularProgressIndicator(),
                         SizedBox(height: 16),
-                        Text('Tap the gallery button to pick an image'),
+                        Text('Processing...'),
                       ],
-                    ),
+                    )
+                  : bytes != null
+                      ? Image.memory(bytes, fit: BoxFit.contain)
+                      : const Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.image, size: 64, color: Colors.grey),
+                            SizedBox(height: 16),
+                            Text('Tap the gallery button to pick an image'),
+                          ],
+                        ),
             ),
           ),
-          if (_processing) const LinearProgressIndicator(),
-          if (_originalBytes != null && _editedBytes != null)
+          if (_originalBytes != null && _editedBytes != null && !_processing)
             SafeArea(
               child: Padding(
                 padding: const EdgeInsets.all(8),
@@ -508,7 +555,7 @@ class _SliderRow extends StatelessWidget {
         SizedBox(
           width: 48,
           child: Text(
-            value.toStringAsFixed(1),
+            value.toStringAsFixed(value == value.roundToDouble() ? 0 : 1),
             style: Theme.of(context).textTheme.bodySmall,
             textAlign: TextAlign.end,
           ),

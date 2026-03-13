@@ -7,7 +7,8 @@
 ///
 /// - 7 image filters: blur, sepia, saturation, brightness, contrast, sharpen, grayscale
 /// - Region-based effects (e.g., blur only top 30% of image)
-/// - Sync and async (Isolate) variants for every filter
+/// - High-quality bicubic image resizing (via flutter_bicubic_resize)
+/// - Sync and async (Isolate) variants for every operation
 /// - JPEG and PNG support with automatic format detection
 ///
 /// ## Quick Start
@@ -24,9 +25,20 @@
 ///   intensity: 0.8,
 ///   region: EditRegion(top: 0.3, bottom: 0.3),
 /// );
+///
+/// // Resize image with bicubic interpolation
+/// final resized = FastImageEditor.resize(
+///   bytes: imageBytes,
+///   outputWidth: 800,
+///   outputHeight: 600,
+/// );
 /// ```
 library fast_image_editor;
 
 export 'src/enums.dart';
 export 'src/exceptions.dart';
 export 'src/fast_image_editor_api.dart';
+
+// Re-export bicubic resize enums for convenience
+export 'package:flutter_bicubic_resize/flutter_bicubic_resize.dart'
+    show BicubicFilter, EdgeMode, CropAnchor, CropAspectRatio;

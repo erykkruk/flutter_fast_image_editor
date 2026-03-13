@@ -3,6 +3,8 @@ import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
+import 'package:flutter_bicubic_resize/flutter_bicubic_resize.dart'
+    hide ImageFormat;
 
 import 'enums.dart';
 import 'exceptions.dart';
@@ -561,6 +563,88 @@ class FastImageEditor {
         radialRegion: radialRegion,
         quality: quality,
       ),
+    );
+  }
+
+  // ============================================================================
+  // Resize (via flutter_bicubic_resize)
+  // ============================================================================
+
+  /// Resize an image using high-quality bicubic interpolation.
+  ///
+  /// Automatically detects JPEG/PNG format and preserves it.
+  /// Powered by [flutter_bicubic_resize](https://pub.dev/packages/flutter_bicubic_resize).
+  ///
+  /// [bytes] - JPEG or PNG image data.
+  /// [outputWidth] - Target width in pixels.
+  /// [outputHeight] - Target height in pixels.
+  /// [quality] - JPEG output quality (1-100, default 95). Ignored for PNG.
+  /// [compressionLevel] - PNG compression level (0-9, default 6). Ignored for JPEG.
+  /// [filter] - Bicubic filter type (default: catmullRom).
+  /// [edgeMode] - Edge handling mode (default: clamp).
+  /// [crop] - Crop factor (1.0 = no crop, > 1.0 = zoom in).
+  /// [cropAnchor] - Anchor point for cropping (default: center).
+  /// [cropAspectRatio] - Aspect ratio mode for cropping.
+  /// [aspectRatioWidth] - Custom aspect ratio width (when cropAspectRatio = custom).
+  /// [aspectRatioHeight] - Custom aspect ratio height (when cropAspectRatio = custom).
+  static Uint8List resize({
+    required Uint8List bytes,
+    required int outputWidth,
+    required int outputHeight,
+    int quality = 95,
+    int compressionLevel = 6,
+    BicubicFilter filter = BicubicFilter.catmullRom,
+    EdgeMode edgeMode = EdgeMode.clamp,
+    double crop = 1.0,
+    CropAnchor cropAnchor = CropAnchor.center,
+    CropAspectRatio cropAspectRatio = CropAspectRatio.square,
+    double aspectRatioWidth = 1.0,
+    double aspectRatioHeight = 1.0,
+  }) {
+    return BicubicResizer.resize(
+      bytes: bytes,
+      outputWidth: outputWidth,
+      outputHeight: outputHeight,
+      quality: quality,
+      compressionLevel: compressionLevel,
+      filter: filter,
+      edgeMode: edgeMode,
+      crop: crop,
+      cropAnchor: cropAnchor,
+      cropAspectRatio: cropAspectRatio,
+      aspectRatioWidth: aspectRatioWidth,
+      aspectRatioHeight: aspectRatioHeight,
+    );
+  }
+
+  /// Async version of [resize]. Runs in a separate isolate.
+  static Future<Uint8List> resizeAsync({
+    required Uint8List bytes,
+    required int outputWidth,
+    required int outputHeight,
+    int quality = 95,
+    int compressionLevel = 6,
+    BicubicFilter filter = BicubicFilter.catmullRom,
+    EdgeMode edgeMode = EdgeMode.clamp,
+    double crop = 1.0,
+    CropAnchor cropAnchor = CropAnchor.center,
+    CropAspectRatio cropAspectRatio = CropAspectRatio.square,
+    double aspectRatioWidth = 1.0,
+    double aspectRatioHeight = 1.0,
+  }) {
+    return BicubicResizer.resizeAsync(
+      bytes: bytes,
+      outputWidth: outputWidth,
+      outputHeight: outputHeight,
+      quality: quality,
+      compressionLevel: compressionLevel,
+      filter: filter,
+      edgeMode: edgeMode,
+      crop: crop,
+      cropAnchor: cropAnchor,
+      cropAspectRatio: cropAspectRatio,
+      aspectRatioWidth: aspectRatioWidth,
+      aspectRatioHeight: aspectRatioHeight,
     );
   }
 }
