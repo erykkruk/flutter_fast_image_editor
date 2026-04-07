@@ -2,7 +2,7 @@ name: fast_image_editor
 description: >-
   Native C image editing for Flutter. Blur, sepia, saturation, brightness,
   contrast, sharpen, grayscale with region-based effects via FFI.
-version: 1.0.0
+version: 1.0.1
 
 homepage: https://github.com/erykkruk/fast_image_editor
 repository: https://github.com/erykkruk/fast_image_editor
