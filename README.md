@@ -15,7 +15,7 @@ Native C image editing for Flutter. Blur, sepia, saturation, brightness, contras
 
 ```yaml
 dependencies:
-  fast_image_editor: ^1.0.2
+  fast_image_editor: ^1.0.3
 ```
 
 ## Quick Start

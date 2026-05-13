@@ -33,7 +33,7 @@
 ///   outputHeight: 600,
 /// );
 /// ```
-library fast_image_editor;
+library;
 
 export 'src/enums.dart';
 export 'src/exceptions.dart';
