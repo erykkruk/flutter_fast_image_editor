@@ -40,6 +40,18 @@ class EditRegion {
     this.right = 0.0,
   });
 
+  /// Apply the effect to the top [fraction] of the image (0.0-1.0).
+  const EditRegion.topOnly(double fraction) : this(top: fraction);
+
+  /// Apply the effect to the bottom [fraction] of the image (0.0-1.0).
+  const EditRegion.bottomOnly(double fraction) : this(bottom: fraction);
+
+  /// Apply the effect to the left [fraction] of the image (0.0-1.0).
+  const EditRegion.leftOnly(double fraction) : this(left: fraction);
+
+  /// Apply the effect to the right [fraction] of the image (0.0-1.0).
+  const EditRegion.rightOnly(double fraction) : this(right: fraction);
+
   /// Apply effect to the entire image.
   static const EditRegion full = EditRegion();
 }
