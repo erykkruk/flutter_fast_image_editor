@@ -6,6 +6,10 @@ import 'package:ffi/ffi.dart';
 import 'package:flutter_bicubic_resize/flutter_bicubic_resize.dart'
     hide ImageFormat;
 
+import 'dart:io';
+import 'dart:math' as math;
+
+import 'edit_operation.dart';
 import 'enums.dart';
 import 'exceptions.dart';
 import 'native_bindings.dart';
@@ -646,5 +650,125 @@ class FastImageEditor {
       aspectRatioWidth: aspectRatioWidth,
       aspectRatioHeight: aspectRatioHeight,
     );
+  }
+
+  // ============================================================================
+  // Operation chains
+  // ============================================================================
+
+  /// Applies [operations] to [bytes] in order and returns the result.
+  ///
+  /// ```dart
+  /// const vintage = <EditOperation>[
+  ///   SepiaOperation(intensity: 0.7),
+  ///   ContrastOperation(factor: 1.2),
+  /// ];
+  ///
+  /// final edited = FastImageEditor.applyAll(bytes: photo, operations: vintage);
+  /// ```
+  ///
+  /// An empty list returns [bytes] unchanged. Each operation is its own
+  /// native decode/filter/encode round trip, so put a [ResizeOperation]
+  /// first when there is one: everything after it then works on fewer
+  /// pixels.
+  ///
+  /// Throws whatever the failing operation throws, with nothing partially
+  /// applied returned.
+  static Uint8List applyAll({
+    required Uint8List bytes,
+    required List<EditOperation> operations,
+  }) {
+    var current = bytes;
+    for (final operation in operations) {
+      current = operation.apply(current);
+    }
+    return current;
+  }
+
+  /// Async version of [applyAll]. Runs the whole chain in one isolate.
+  ///
+  /// One isolate for the chain rather than one per operation: the image
+  /// bytes would otherwise be copied across isolate boundaries between
+  /// every step.
+  static Future<Uint8List> applyAllAsync({
+    required Uint8List bytes,
+    required List<EditOperation> operations,
+  }) {
+    return Isolate.run(
+      () => applyAll(bytes: bytes, operations: operations),
+    );
+  }
+
+  // ============================================================================
+  // Batch processing
+  // ============================================================================
+
+  /// Default number of images processed concurrently by [applyBatch].
+  ///
+  /// One isolate per CPU core minus one, so the UI isolate keeps a core to
+  /// itself; always at least 1.
+  static int get defaultBatchConcurrency {
+    final cores = Platform.numberOfProcessors;
+    return cores > 1 ? cores - 1 : 1;
+  }
+
+  /// Applies the same [operations] to every image, in parallel.
+  ///
+  /// Results keep the order of [images] regardless of which one finishes
+  /// first. [concurrency] caps how many isolates run at once and defaults
+  /// to [defaultBatchConcurrency]; [onProgress] fires on the calling
+  /// isolate after each image completes.
+  ///
+  /// ```dart
+  /// final thumbnails = await FastImageEditor.applyBatch(
+  ///   images: pickedFiles,
+  ///   operations: const [
+  ///     ResizeOperation(outputWidth: 512, outputHeight: 512),
+  ///     SharpenOperation(amount: 0.6),
+  ///   ],
+  ///   onProgress: (done, total) => setState(() => _progress = done / total),
+  /// );
+  /// ```
+  ///
+  /// The batch is fail-fast: the first image that fails completes the
+  /// returned future with its exception.
+  ///
+  /// Throws [ArgumentError] if [concurrency] is not positive.
+  static Future<List<Uint8List>> applyBatch({
+    required List<Uint8List> images,
+    required List<EditOperation> operations,
+    int? concurrency,
+    void Function(int completed, int total)? onProgress,
+  }) async {
+    final limit = concurrency ?? defaultBatchConcurrency;
+    if (limit <= 0) {
+      throw ArgumentError.value(limit, 'concurrency', 'must be positive');
+    }
+    final total = images.length;
+    if (total == 0) {
+      return <Uint8List>[];
+    }
+
+    final results = List<Uint8List?>.filled(total, null);
+    final workerCount = math.min(limit, total);
+    var next = 0;
+    var completed = 0;
+
+    Future<void> worker() async {
+      while (true) {
+        final index = next;
+        if (index >= total) return;
+        next = index + 1;
+        final bytes = images[index];
+        results[index] = await Isolate.run(
+          () => applyAll(bytes: bytes, operations: operations),
+        );
+        completed++;
+        onProgress?.call(completed, total);
+      }
+    }
+
+    await Future.wait(List.generate(workerCount, (_) => worker()));
+    return List<Uint8List>.from(results);
   }
 }

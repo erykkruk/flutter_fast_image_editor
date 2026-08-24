@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-08-24
+
+### Added
+
+- **Operation chains.** `EditOperation` describes an edit as a value rather
+  than a call: `BlurOperation`, `SepiaOperation`, `SaturationOperation`,
+  `BrightnessOperation`, `ContrastOperation`, `SharpenOperation`,
+  `GrayscaleOperation` and `ResizeOperation`. All are `const`, so a preset
+  can be a compile-time list, reused across images and sent to an isolate.
+- `FastImageEditor.applyAll` runs a chain in order; `applyAllAsync` runs the
+  whole chain in one isolate rather than one per step, which would copy the
+  image bytes across isolate boundaries between every operation.
+- **Batch processing.** `FastImageEditor.applyBatch` applies the same chain
+  to a list of images in parallel, with ordered results, a `concurrency` cap
+  (defaulting to `defaultBatchConcurrency`, one isolate per core minus one)
+  and an `onProgress` callback fired on the calling isolate.
+
+### Changed
+
+- `flutter_lints` raised to `^6.0.0`; the package analyzes clean under the
+  stricter rule set.
+
 ## [1.0.4] - 2026-06-07
 
 ### Added
