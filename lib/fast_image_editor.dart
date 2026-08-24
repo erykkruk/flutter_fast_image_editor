@@ -35,6 +35,7 @@
 /// ```
 library;
 
+export 'src/edit_operation.dart';
 export 'src/enums.dart';
 export 'src/exceptions.dart';
 export 'src/fast_image_editor_api.dart';

@@ -9,6 +9,8 @@ Native C image editing for Flutter. Blur, sepia, saturation, brightness, contras
 - **Bicubic resize**: high-quality image resizing via `flutter_bicubic_resize`
 - **Native performance**: all processing in C via FFI — no Dart pixel loops
 - **Sync & async**: every operation has a sync and `Isolate.run` async variant
+- **Operation chains**: describe a preset as a `const` list and apply it in one call
+- **Batch processing**: run a chain over many images in parallel, with progress reporting
 - **Format support**: JPEG and PNG with automatic detection
 
 ## Installation
@@ -97,6 +99,48 @@ FastImageEditor.blur(
   radialRegion: RadialRegion(centerX: 0.0, centerY: 0.0, radius: 0.3),
 );
 ```
+
+### Operation Chains
+
+Describe the edit once, apply it many times:
+
+```dart
+const vintage = <EditOperation>[
+  SepiaOperation(intensity: 0.7),
+  ContrastOperation(factor: 1.2),
+  BlurOperation(radius: 3, radialRegion: RadialRegion(radius: 0.9)),
+];
+
+final edited = FastImageEditor.applyAll(bytes: photo, operations: vintage);
+
+// Off the UI thread; the whole chain runs in one isolate
+final edited = await FastImageEditor.applyAllAsync(
+  bytes: photo,
+  operations: vintage,
+);
+```
+
+Every operation is its own native decode/filter/encode round trip, so put a
+`ResizeOperation` first when there is one: everything after it then works on
+fewer pixels.
+
+### Batch Processing
+
+```dart
+final thumbnails = await FastImageEditor.applyBatch(
+  images: pickedFiles,
+  operations: const [
+    ResizeOperation(outputWidth: 512, outputHeight: 512),
+    SharpenOperation(amount: 0.6),
+  ],
+  onProgress: (done, total) => setState(() => _progress = done / total),
+);
+```
+
+Results keep the input order. `concurrency` defaults to
+`FastImageEditor.defaultBatchConcurrency` (one isolate per CPU core minus
+one, so the UI isolate keeps a core). Batches are fail-fast: the first image
+that fails completes the future with its exception.
 
 ### Format Detection
 
