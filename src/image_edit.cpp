@@ -24,13 +24,24 @@ typedef struct {
     uint8_t* data;
     int size;
     int capacity;
+    int failed;
 } WriteContext;
 
 static void write_func(void* context, void* data, int size) {
     WriteContext* ctx = (WriteContext*)context;
-    while (ctx->size + size > ctx->capacity) {
-        ctx->capacity = ctx->capacity * 2;
-        ctx->data = (uint8_t*)realloc(ctx->data, ctx->capacity);
+    if (ctx->failed) return;
+    int new_capacity = ctx->capacity;
+    while (ctx->size + size > new_capacity) {
+        new_capacity *= 2;
+    }
+    if (new_capacity != ctx->capacity) {
+        uint8_t* grown = (uint8_t*)realloc(ctx->data, new_capacity);
+        if (grown == NULL) {
+            ctx->failed = 1;
+            return;
+        }
+        ctx->data = grown;
+        ctx->capacity = new_capacity;
     }
     memcpy(ctx->data + ctx->size, data, size);
     ctx->size += size;
@@ -137,8 +148,11 @@ static int parse_exif_orientation(const uint8_t* data, int size) {
                             (data[tiff_start + 6] << 8) | data[tiff_start + 7];
             }
 
-            int ifd_start = tiff_start + ifd_offset;
-            if (ifd_start + 2 > size) return 1;
+            // ifd_offset comes straight from the file: compare it unsigned
+            // before adding, or a huge value wraps ifd_start negative and
+            // the reads below land before the buffer.
+            if (ifd_offset > (uint32_t)(size - tiff_start - 2)) return 1;
+            int ifd_start = tiff_start + (int)ifd_offset;
             uint16_t num_entries;
             if (little_endian) {
                 num_entries = data[ifd_start] | (data[ifd_start + 1] << 8);
@@ -258,6 +272,7 @@ static int encode_output(uint8_t* pixels, int w, int h, int channels,
     WriteContext ctx;
     ctx.capacity = w * h * channels;
     ctx.size = 0;
+    ctx.failed = 0;
     ctx.data = (uint8_t*)malloc(ctx.capacity);
     if (ctx.data == NULL) return EDIT_ERROR_ALLOC_FAILED;
 
@@ -272,12 +287,18 @@ static int encode_output(uint8_t* pixels, int w, int h, int channels,
             write_func, &ctx, w, h, channels, pixels, quality);
     }
 
+    if (ctx.failed) {
+        free(ctx.data);
+        return EDIT_ERROR_ALLOC_FAILED;
+    }
     if (result == 0) {
         free(ctx.data);
         return EDIT_ERROR_ENCODE_FAILED;
     }
 
-    *output_data = (uint8_t*)realloc(ctx.data, ctx.size);
+    // A failed shrink leaves the original block valid, so keep it.
+    uint8_t* shrunk = (uint8_t*)realloc(ctx.data, ctx.size);
+    *output_data = shrunk != NULL ? shrunk : ctx.data;
     *output_size = ctx.size;
     return EDIT_SUCCESS;
 }
