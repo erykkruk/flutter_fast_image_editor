@@ -17,3 +17,13 @@ jobs:
       - run: dart format --set-exit-if-changed .
       - run: flutter analyze --no-fatal-infos
       - run: flutter test
+      - name: Native tests (ASan + UBSan)
+        # The shift check is off because the vendored stb_image_write.h
+        # left-shifts negative values by design.
+        run: |
+          g++ -std=c++11 -g -w -fno-omit-frame-pointer \
+            -fsanitize=address,undefined -fno-sanitize=shift \
+            -fno-sanitize-recover=all -Isrc \
+            test/native/image_edit_native_test.cpp src/image_edit.cpp \
+            -o "$RUNNER_TEMP/native_test"
+          "$RUNNER_TEMP/native_test"
