@@ -24,13 +24,24 @@ typedef struct {
     uint8_t* data;
     int size;
     int capacity;
+    int failed;
 } WriteContext;
 
 static void write_func(void* context, void* data, int size) {
     WriteContext* ctx = (WriteContext*)context;
-    while (ctx->size + size > ctx->capacity) {
-        ctx->capacity = ctx->capacity * 2;
-        ctx->data = (uint8_t*)realloc(ctx->data, ctx->capacity);
+    if (ctx->failed) return;
+    int new_capacity = ctx->capacity;
+    while (ctx->size + size > new_capacity) {
+        new_capacity *= 2;
+    }
+    if (new_capacity != ctx->capacity) {
+        uint8_t* grown = (uint8_t*)realloc(ctx->data, new_capacity);
+        if (grown == NULL) {
+            ctx->failed = 1;
+            return;
+        }
+        ctx->data = grown;
+        ctx->capacity = new_capacity;
     }
     memcpy(ctx->data + ctx->size, data, size);
     ctx->size += size;
@@ -137,8 +148,11 @@ static int parse_exif_orientation(const uint8_t* data, int size) {
                             (data[tiff_start + 6] << 8) | data[tiff_start + 7];
             }
 
-            int ifd_start = tiff_start + ifd_offset;
-            if (ifd_start + 2 > size) return 1;
+            // ifd_offset comes straight from the file: compare it unsigned
+            // before adding, or a huge value wraps ifd_start negative and
+            // the reads below land before the buffer.
+            if (ifd_offset > (uint32_t)(size - tiff_start - 2)) return 1;
+            int ifd_start = tiff_start + (int)ifd_offset;
             uint16_t num_entries;
             if (little_endian) {
                 num_entries = data[ifd_start] | (data[ifd_start + 1] << 8);
@@ -258,6 +272,7 @@ static int encode_output(uint8_t* pixels, int w, int h, int channels,
     WriteContext ctx;
     ctx.capacity = w * h * channels;
     ctx.size = 0;
+    ctx.failed = 0;
     ctx.data = (uint8_t*)malloc(ctx.capacity);
     if (ctx.data == NULL) return EDIT_ERROR_ALLOC_FAILED;
 
@@ -272,12 +287,18 @@ static int encode_output(uint8_t* pixels, int w, int h, int channels,
             write_func, &ctx, w, h, channels, pixels, quality);
     }
 
+    if (ctx.failed) {
+        free(ctx.data);
+        return EDIT_ERROR_ALLOC_FAILED;
+    }
     if (result == 0) {
         free(ctx.data);
         return EDIT_ERROR_ENCODE_FAILED;
     }
 
-    *output_data = (uint8_t*)realloc(ctx.data, ctx.size);
+    // A failed shrink leaves the original block valid, so keep it.
+    uint8_t* shrunk = (uint8_t*)realloc(ctx.data, ctx.size);
+    *output_data = shrunk != NULL ? shrunk : ctx.data;
     *output_size = ctx.size;
     return EDIT_SUCCESS;
 }
@@ -323,28 +344,18 @@ static void box_blur_horizontal(uint8_t* src, uint8_t* dst, int w, int h,
                 }
             }
 
-            // Slide window: remove left pixel, add right pixel
+            // Slide window: remove left pixel, add right pixel. Clamping
+            // both ends keeps edge windows identical to a full re-sum while
+            // staying O(1), so a large radius no longer costs O(radius)
+            // for every pixel near the edges.
             int remove_x = x - radius;
             int add_x = x + radius + 1;
-            if (remove_x >= 0 && add_x < w) {
-                int rem_idx = (y * w + remove_x) * channels;
-                int add_idx = (y * w + add_x) * channels;
-                for (int c = 0; c < channels; c++) {
-                    sum[c] += src[add_idx + c] - src[rem_idx + c];
-                }
-            } else {
-                // Recalculate for edge cases
-                for (int c = 0; c < channels; c++) sum[c] = 0;
-                count = 0;
-                int nx = x + 1;
-                for (int kx = nx - radius; kx <= nx + radius; kx++) {
-                    int sx = kx < 0 ? 0 : (kx >= w ? w - 1 : kx);
-                    int idx = (y * w + sx) * channels;
-                    for (int c = 0; c < channels; c++) {
-                        sum[c] += src[idx + c];
-                    }
-                    count++;
-                }
+            if (remove_x < 0) remove_x = 0;
+            if (add_x >= w) add_x = w - 1;
+            int rem_idx = (y * w + remove_x) * channels;
+            int add_idx = (y * w + add_x) * channels;
+            for (int c = 0; c < channels; c++) {
+                sum[c] += src[add_idx + c] - src[rem_idx + c];
             }
         }
     }
@@ -387,24 +398,12 @@ static void box_blur_vertical(uint8_t* src, uint8_t* dst, int w, int h,
 
             int remove_y = y - radius;
             int add_y = y + radius + 1;
-            if (remove_y >= 0 && add_y < h) {
-                int rem_idx = (remove_y * w + x) * channels;
-                int add_idx = (add_y * w + x) * channels;
-                for (int c = 0; c < channels; c++) {
-                    sum[c] += src[add_idx + c] - src[rem_idx + c];
-                }
-            } else {
-                for (int c = 0; c < channels; c++) sum[c] = 0;
-                count = 0;
-                int ny = y + 1;
-                for (int ky = ny - radius; ky <= ny + radius; ky++) {
-                    int sy = ky < 0 ? 0 : (ky >= h ? h - 1 : ky);
-                    int idx = (sy * w + x) * channels;
-                    for (int c = 0; c < channels; c++) {
-                        sum[c] += src[idx + c];
-                    }
-                    count++;
-                }
+            if (remove_y < 0) remove_y = 0;
+            if (add_y >= h) add_y = h - 1;
+            int rem_idx = (remove_y * w + x) * channels;
+            int add_idx = (add_y * w + x) * channels;
+            for (int c = 0; c < channels; c++) {
+                sum[c] += src[add_idx + c] - src[rem_idx + c];
             }
         }
     }
