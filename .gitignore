@@ -20,3 +20,7 @@ example/build/
 example/android/.gradle/
 example/android/.cxx/
 example/android/local.properties
+
+# Local IDE and Gradle state
+.vscode/
+android/.gradle/

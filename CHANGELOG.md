@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-10-15
+
+### Fixed
+
+- **Out-of-bounds read on malformed EXIF.** A JPEG whose EXIF IFD offset
+  was large enough to wrap the computed position negative made the
+  orientation parser read memory before the input buffer, which could crash
+  the app on a crafted or corrupt photo. The offset is now bounds-checked
+  and such files decode as upright.
+- **Encoder out-of-memory handling.** A failed buffer grow while encoding the
+  output was dereferenced instead of reported; it now returns
+  `NativeEditError.allocFailed` without leaking.
+
+### Changed
+
+- **Faster blur and sharpen at large radii.** The box blur sliding window
+  re-summed the whole window for every pixel within `radius` of an edge,
+  so cost grew with the radius. It now updates in constant time per pixel
+  with byte-identical output (radius 300 on a 2000x1500 image: about 12.8 s
+  down to 0.3 s on a desktop build).
+- Native regression tests in `test/native/`, run in CI under
+  AddressSanitizer and UndefinedBehaviorSanitizer.
+
 ## [1.1.0] - 2026-08-24
 
 ### Added
