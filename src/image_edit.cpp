@@ -344,28 +344,18 @@ static void box_blur_horizontal(uint8_t* src, uint8_t* dst, int w, int h,
                 }
             }
 
-            // Slide window: remove left pixel, add right pixel
+            // Slide window: remove left pixel, add right pixel. Clamping
+            // both ends keeps edge windows identical to a full re-sum while
+            // staying O(1), so a large radius no longer costs O(radius)
+            // for every pixel near the edges.
             int remove_x = x - radius;
             int add_x = x + radius + 1;
-            if (remove_x >= 0 && add_x < w) {
-                int rem_idx = (y * w + remove_x) * channels;
-                int add_idx = (y * w + add_x) * channels;
-                for (int c = 0; c < channels; c++) {
-                    sum[c] += src[add_idx + c] - src[rem_idx + c];
-                }
-            } else {
-                // Recalculate for edge cases
-                for (int c = 0; c < channels; c++) sum[c] = 0;
-                count = 0;
-                int nx = x + 1;
-                for (int kx = nx - radius; kx <= nx + radius; kx++) {
-                    int sx = kx < 0 ? 0 : (kx >= w ? w - 1 : kx);
-                    int idx = (y * w + sx) * channels;
-                    for (int c = 0; c < channels; c++) {
-                        sum[c] += src[idx + c];
-                    }
-                    count++;
-                }
+            if (remove_x < 0) remove_x = 0;
+            if (add_x >= w) add_x = w - 1;
+            int rem_idx = (y * w + remove_x) * channels;
+            int add_idx = (y * w + add_x) * channels;
+            for (int c = 0; c < channels; c++) {
+                sum[c] += src[add_idx + c] - src[rem_idx + c];
             }
         }
     }
@@ -408,24 +398,12 @@ static void box_blur_vertical(uint8_t* src, uint8_t* dst, int w, int h,
 
             int remove_y = y - radius;
             int add_y = y + radius + 1;
-            if (remove_y >= 0 && add_y < h) {
-                int rem_idx = (remove_y * w + x) * channels;
-                int add_idx = (add_y * w + x) * channels;
-                for (int c = 0; c < channels; c++) {
-                    sum[c] += src[add_idx + c] - src[rem_idx + c];
-                }
-            } else {
-                for (int c = 0; c < channels; c++) sum[c] = 0;
-                count = 0;
-                int ny = y + 1;
-                for (int ky = ny - radius; ky <= ny + radius; ky++) {
-                    int sy = ky < 0 ? 0 : (ky >= h ? h - 1 : ky);
-                    int idx = (sy * w + x) * channels;
-                    for (int c = 0; c < channels; c++) {
-                        sum[c] += src[idx + c];
-                    }
-                    count++;
-                }
+            if (remove_y < 0) remove_y = 0;
+            if (add_y >= h) add_y = h - 1;
+            int rem_idx = (remove_y * w + x) * channels;
+            int add_idx = (add_y * w + x) * channels;
+            for (int c = 0; c < channels; c++) {
+                sum[c] += src[add_idx + c] - src[rem_idx + c];
             }
         }
     }
