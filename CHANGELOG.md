@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Encoder out-of-memory handling.** A failed buffer grow while encoding the
   output was dereferenced instead of reported; it now returns
   `NativeEditError.allocFailed` without leaking.
+- Declared the analyzer excludes Flutter's `AnalysisOptionsMigration`
+  requires, in both `analysis_options.yaml` and the example's, so
+  `flutter pub get` no longer rewrites them and leaves the tree dirty for
+  `pub publish`.
 
 ### Changed
 
