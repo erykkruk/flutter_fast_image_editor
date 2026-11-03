@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] - 2026-11-03
+
+### Fixed
+
+- **iOS link failure with CocoaPods** (`57 duplicate symbols`). This package
+  and its `flutter_bicubic_resize` dependency each exported their own copy of
+  stb and a `free_buffer` function. The stb copy is now internal and the
+  native function is `image_edit_free_buffer`. No Dart API change.
+- **Android build failure on Flutter's current app template.** The plugin
+  compiled against SDK 35 while `flutter_bicubic_resize` requires 36.
+  `compileSdk` is now 36; `minSdk` is unchanged.
+
 ## [1.1.1] - 2026-10-15
 
 ### Fixed

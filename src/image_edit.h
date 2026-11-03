@@ -163,7 +163,7 @@ FFI_EXPORT int image_edit_grayscale(
 );
 
 // Free native-allocated output buffer
-FFI_EXPORT void free_buffer(uint8_t* buffer);
+FFI_EXPORT void image_edit_free_buffer(uint8_t* buffer);
 
 #ifdef __cplusplus
 }

@@ -7,6 +7,12 @@
 //     test/native/image_edit_native_test.cpp src/image_edit.cpp -o native_test
 //   ./native_test
 
+// image_edit.cpp keeps stb internal, so the test compiles its own copy.
+#define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#define STB_IMAGE_STATIC
+#define STB_IMAGE_WRITE_STATIC
+
 #include "image_edit.h"
 #include "stb_image.h"
 #include "stb_image_write.h"
@@ -159,7 +165,7 @@ static std::vector<uint8_t> run_blur(const std::vector<uint8_t>& png,
     std::vector<uint8_t> pixels;
     if (result == EDIT_SUCCESS) {
         pixels = decode(output, output_size, w, h);
-        free_buffer(output);
+        image_edit_free_buffer(output);
     }
     return pixels;
 }
@@ -207,7 +213,7 @@ static int run_grayscale(const std::vector<uint8_t>& jpeg, int* w, int* h) {
                                       &output, &output_size, JPEG_QUALITY);
     if (result == EDIT_SUCCESS) {
         decode(output, output_size, w, h);
-        free_buffer(output);
+        image_edit_free_buffer(output);
     }
     return result;
 }

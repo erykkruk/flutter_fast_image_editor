@@ -22,7 +22,7 @@ apply plugin: 'com.android.library'
 
 android {
     namespace 'com.erykkruk.fast_image_editor'
-    compileSdk 35
+    compileSdk 36
 
     defaultConfig {
         minSdk 21
