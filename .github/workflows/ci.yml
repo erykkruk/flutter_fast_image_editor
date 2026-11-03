@@ -27,3 +27,22 @@ jobs:
             test/native/image_edit_native_test.cpp src/image_edit.cpp \
             -o "$RUNNER_TEMP/native_test"
           "$RUNNER_TEMP/native_test"
+      - name: Native symbols stay private
+        run: bash test/native/check_exported_symbols.sh
+
+  build-fresh-app:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-latest, target: ios, swiftpm: "true" }
+          - { os: macos-latest, target: ios, swiftpm: "false" }
+          - { os: ubuntu-latest, target: android, swiftpm: "false" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: bash .github/scripts/build_fresh_app.sh ${{ matrix.target }} ${{ matrix.swiftpm }}
