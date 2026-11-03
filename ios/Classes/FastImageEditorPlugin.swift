@@ -23,6 +23,6 @@ public class FastImageEditorPlugin: NSObject, FlutterPlugin {
     _ = image_edit_contrast(&dummyInput, 0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, &outPtr, &outSize, 90)
     _ = image_edit_sharpen(&dummyInput, 0, 1.0, 1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, &outPtr, &outSize, 90)
     _ = image_edit_grayscale(&dummyInput, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, &outPtr, &outSize, 90)
-    free_buffer(nil)
+    image_edit_free_buffer(nil)
   }
 }

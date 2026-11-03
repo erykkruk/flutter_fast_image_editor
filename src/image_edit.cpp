@@ -1,5 +1,9 @@
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
+// flutter_bicubic_resize, a dependency of this package, compiles its own copy
+// of stb. Keep ours internal so static linking on iOS sees no duplicates.
+#define STB_IMAGE_STATIC
+#define STB_IMAGE_WRITE_STATIC
 
 #define STBI_NO_PSD
 #define STBI_NO_TGA
@@ -816,7 +820,7 @@ FFI_EXPORT int image_edit_grayscale(
 // Memory management
 // ============================================================================
 
-FFI_EXPORT void free_buffer(uint8_t* buffer) {
+FFI_EXPORT void image_edit_free_buffer(uint8_t* buffer) {
     if (buffer != NULL) {
         free(buffer);
     }

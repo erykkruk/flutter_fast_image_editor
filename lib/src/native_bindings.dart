@@ -332,7 +332,7 @@ class NativeBindings {
         .asFunction<ImageEditGrayscaleDart>();
 
     freeBuffer = _library
-        .lookup<NativeFunction<FreeBufferNative>>('free_buffer')
+        .lookup<NativeFunction<FreeBufferNative>>('image_edit_free_buffer')
         .asFunction<FreeBufferDart>();
   }
 }
